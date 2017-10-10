@@ -5,9 +5,9 @@
 //  Created by Latrops on 10/9/17.
 //
 
+#import "LATMutableDictionary.h"
 
-#import "LATFixedMutableDictionary.h"
-
+//Linked list node
 @interface LATMutableDictionaryBucket : NSObject
 
 @property (nonatomic, copy) id key;
@@ -19,6 +19,7 @@
 @implementation LATMutableDictionaryBucket
 @end
 
+//List enumerator
 @interface LATBlockEnumerator : NSEnumerator {
     id (^_block)(void);
 }
@@ -41,6 +42,11 @@
 
 @end
 
+//Dictionary without resizing hash table, will eventually work slow without improvments
+
+@interface LATFixedMutableDictionary : NSMutableDictionary
+- (id)initWithSize: (NSUInteger)size;
+@end
 
 @implementation LATFixedMutableDictionary {
     NSUInteger _count;
@@ -64,9 +70,9 @@
     NSUInteger bucketIndex = [key hash] % _size;
     LATMutableDictionaryBucket *bucket = _array[bucketIndex];
     while(bucket) {
-        if([[bucket key] isEqual: key])
-            return [bucket obj];
-        bucket = [bucket next];
+        if([bucket.key isEqual: key])
+            return bucket.obj;
+        bucket = bucket.next;
     }
     return nil;
 }
@@ -75,7 +81,7 @@
     __block NSUInteger index = -1;
     __block LATMutableDictionaryBucket *bucket = nil;
     NSEnumerator *e = [[LATBlockEnumerator alloc] initWithBlock: ^{
-        bucket = [bucket next];
+        bucket = bucket.next;
         while(!bucket) {
             index++;
             if(index >= _size)
@@ -92,50 +98,69 @@
     LATMutableDictionaryBucket *previousBucket = nil;
     LATMutableDictionaryBucket *bucket = _array[bucketIndex];
     while(bucket) {
-        if([[bucket key] isEqual: key]) {
+        if([bucket.key isEqual: key]) {
             if(previousBucket == nil) {
-                LATMutableDictionaryBucket *nextBucket = [bucket next];
+                LATMutableDictionaryBucket *nextBucket = bucket.next;
                 _array[bucketIndex] = nextBucket;
             }
             else {
-                [previousBucket setNext: [bucket next]];
+                previousBucket.next = bucket.next;
             }
             _count--;
             return;
         }
         previousBucket = bucket;
-        bucket = [bucket next];
+        bucket = bucket.next;
     }
 }
 
 - (void)setObject: (id)obj forKey: (id)key {
     LATMutableDictionaryBucket *newBucket = [[LATMutableDictionaryBucket alloc] init];
-    [newBucket setKey: key];
-    [newBucket setObj: obj];
+    newBucket.key = key;
+    newBucket.obj = obj;
     
     [self removeObjectForKey: key];
     
     NSUInteger bucketIndex = [key hash] % _size;
-    [newBucket setNext: _array[bucketIndex]];
+    newBucket.next = _array[bucketIndex];
     _array[bucketIndex] = newBucket;
     _count++;
 }
 
 @end
 
+//FixedDictionary wrapper that keeps track of the table size and creates bigger dictionary whenever current one gets full
 @implementation LATMutableDictionary {
     NSUInteger _size;
     LATFixedMutableDictionary *_fixedDict;
 }
 
+//Load factor for hash table. Should keep table fast at this ratio, while not consuming too much memory
 static const NSUInteger kLATxLoadFactorNumerator = 7;
 static const NSUInteger kLATxLoadFactorDenominator = 10;
+
+- (id)init {
+    self = [super init];
+    return [[LATMutableDictionary alloc] initWithCapacity:0];
+}
 
 - (id)initWithCapacity: (NSUInteger)capacity {
     capacity = MAX(capacity, 4);
     if((self = [super init])) {
         _size = capacity;
         _fixedDict = [[LATFixedMutableDictionary alloc] initWithSize: _size];
+    }
+    return self;
+}
+
+- (id)initWithObjects:(id  _Nonnull const [])objects forKeys:(id<NSCopying>  _Nonnull const [])keys count:(NSUInteger)cnt {
+    cnt = MAX(cnt, 4);
+    if((self = [super init])) {
+        _size = cnt;
+        _fixedDict = [[LATFixedMutableDictionary alloc] initWithSize: _size];
+        for (int i=0; i<cnt; i++) {
+            [_fixedDict setObject:objects[i] forKey:keys[i]];
+        }
     }
     return self;
 }
@@ -172,50 +197,5 @@ static const NSUInteger kLATxLoadFactorDenominator = 10;
 }
 
 @end
-
-static void Test(NSMutableDictionary *testDictionary) {
-    NSMutableDictionary *referenceDictionary = [NSMutableDictionary dictionary];
-    
-    struct seed_t { unsigned short v[3]; };
-    __block struct seed_t seed = { { 0, 0, 0 } };
-    
-    __block NSMutableDictionary *dict;
-    
-    void (^blocks[])(void) = {
-        ^{
-            id key = [NSNumber numberWithInt: nrand48(seed.v) % 1024];
-            id value = [NSNumber numberWithLong: nrand48(seed.v)];
-            [dict setObject: value forKey: key];
-            NSLog(@"%@",key);
-        },
-        ^{
-            id key = [NSNumber numberWithInt: nrand48(seed.v) % 1024];
-            [dict removeObjectForKey: key];
-        }
-    };
-    
-    for(int i = 0; i < 10000; i++) {
-        NSUInteger index = nrand48(seed.v) % (sizeof(blocks) / sizeof(*blocks));
-        void (^block)(void) = blocks[index];
-        
-        struct seed_t oldSeed = seed;
-        dict = testDictionary;
-        block();
-        seed = oldSeed;
-        dict = referenceDictionary;
-        block();
-        
-        if(![testDictionary isEqual: referenceDictionary]) {
-            NSLog(@"Dictionaries are not equal: %@ %@", referenceDictionary, testDictionary);
-            exit(1);
-        }
-    }
-}
-
-void LATMutableDictionaryTest(void){
-    Test([[LATFixedMutableDictionary alloc] initWithSize: 10]);
-    Test([LATMutableDictionary dictionary]);
-}
-
 
 

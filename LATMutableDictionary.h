@@ -1,12 +1,12 @@
 //
-//  LATMutableArray.h
+//  LATMutableDictionary.h
 //  MutableDictionarySubclass
 //
 //  Created by Latrops on 10/9/17.
 //
 
-#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
 
-@interface LATMutableArray : NSMutableDictionar
+@interface LATMutableDictionary : NSMutableDictionary
 
 @end
